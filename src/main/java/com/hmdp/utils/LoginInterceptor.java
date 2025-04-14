@@ -3,6 +3,7 @@ package com.hmdp.utils;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.hmdp.dto.UserDTO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -12,6 +13,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.util.Map;
 
+@Slf4j
 public class LoginInterceptor implements HandlerInterceptor {
 
     private StringRedisTemplate stringRedisTemplate;
@@ -22,11 +24,13 @@ public class LoginInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        log.debug("拦截到请求：{}", request.getRequestURI());
         // 获取请求头中的token
         String token = request.getHeader("authorization");
         if (StrUtil.isBlank(token)) {
             // 如果token为空，返回401状态码
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            log.debug("请求未携带token，返回401状态码");
             return false;
         }
         // 查询Redis中的用户信息（Hash）
@@ -34,6 +38,7 @@ public class LoginInterceptor implements HandlerInterceptor {
         // 判断用户是否存在
         if (userMap.isEmpty()) {
             // 不存在，返回401状态码
+            log.debug("token无效，返回401状态码");
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             return false;
         }
@@ -49,6 +54,6 @@ public class LoginInterceptor implements HandlerInterceptor {
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
-        HandlerInterceptor.super.afterCompletion(request, response, handler, ex);
+        UserHolder.removeUser();
     }
 }

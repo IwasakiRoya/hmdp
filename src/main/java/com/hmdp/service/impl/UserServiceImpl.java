@@ -100,7 +100,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 7.4.设置token的过期时间
         stringRedisTemplate.expire(LOGIN_USER_KEY + token, LOGIN_USER_TTL, java.util.concurrent.TimeUnit.MINUTES);
         // 8.返回token
-        return Result.ok();
+        return Result.ok(token);
     }
 
     private UserDTO convertToDTO(User user) {
