@@ -1,5 +1,8 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
+import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
@@ -11,10 +14,16 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexPatterns;
 import com.hmdp.utils.RegexUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.util.HashMap;
+import java.util.Map;
+
+import static com.hmdp.utils.RedisConstants.*;
 import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 
 /**
@@ -29,6 +38,10 @@ import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
 
+    // 启用Redis链接
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
     @Override
     public Result sendCode(String phone, HttpSession session) {
         // 1.校验手机号（为啥你前端不管这个事？占用服务器资源就为了给你验个正则？）
@@ -38,8 +51,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         // 3.符合，生成验证码
         String code = RandomUtil.randomNumbers(6);
-        // 4.保存验证码到session
-        session.setAttribute("code", code);
+        // 4.保存验证码到Redis // set key value ex 120
+        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone, code, LOGIN_CODE_TTL, java.util.concurrent.TimeUnit.MINUTES);
         // 5.发送验证码
         log.debug("验证码发送成功，验证码为：{}", code);
         // 6.返回成功信息
@@ -49,34 +62,45 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     @Override
     public Result login(LoginFormDTO loginForm, HttpSession session) {
         // 1.校验手机号
-        if (RegexUtils.isPhoneInvalid(loginForm.getPhone())) {
+        String phone = loginForm.getPhone();
+        if (RegexUtils.isPhoneInvalid(phone)) {
             // 如果不符合，返回错误信息
             return Result.fail("手机号格式错误");
         }
-        // 2.校验验证码(先从session中获取验证码)
-        String cacheCode = (String) session.getAttribute("code");
+        // 2.校验验证码(从Redis中获取)
+        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
+        log.debug("从Redis中获取的验证码为：{}", cacheCode);
+        // 3.判断验证码是否正确
         String code = loginForm.getCode();
-        if (cacheCode == null || !code.equals(cacheCode)) {
-            // 3.验证码不一致，报错
+        if (cacheCode == null || !cacheCode.equals(code)) {
+            // 如果不正确，返回错误信息
             return Result.fail("验证码错误");
         }
-
         // 4.一致，根据手机号查询用户是否存在
-        User user = query().eq("phone", loginForm.getPhone()).one();
+        User user = query().eq("phone", phone).one();
 
         // 5.判断用户是否存在
         if (user == null) {
             // 6.不存在，创建新用户
-            user = creatUserWithPhone(loginForm.getPhone());
+            user = creatUserWithPhone(phone);
         }
 
         // 7.保存用户信息到session
-        // 注意这个地方，你定义的属性名是user
-        // 以后获得的时候session.setAttribute("user", user)就可以了
-        // 转换实体为DTO后再存储
-        UserDTO userDTO = convertToDTO(user);
-        session.setAttribute("user", userDTO);
-         return Result.ok();
+        // 7.1.生成token作为登录令牌
+        String token = UUID.randomUUID().toString(true);
+        // 7.2.将User对象转换为Hash存储
+        // setFieldValueEditor类似比较器,你需要在这里制定规则
+        // 第一个参数将会是传入的属性名称，第二个参数将会是传入的属性值
+        // 返回值就是你想要的属性值（指定类型）
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
+                CopyOptions.create().setIgnoreNullValue(true).setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString()));
+        // 7.3.将token和用户信息存储到Redis
+        stringRedisTemplate.opsForHash().putAll(LOGIN_USER_KEY + token, userMap);
+        // 7.4.设置token的过期时间
+        stringRedisTemplate.expire(LOGIN_USER_KEY + token, LOGIN_USER_TTL, java.util.concurrent.TimeUnit.MINUTES);
+        // 8.返回token
+        return Result.ok();
     }
 
     private UserDTO convertToDTO(User user) {
