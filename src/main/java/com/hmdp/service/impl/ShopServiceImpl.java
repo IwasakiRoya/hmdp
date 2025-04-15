@@ -35,7 +35,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     private StringRedisTemplate stringRedisTemplate;
 
     @Override
-    public Result queryById(Long id) throws IllegalAccessException {
+    public Result queryById(Long id) {
         String key = CACHE_SHOP_KEY + id;
         // 1.从Redis中查数据（缓存）
         String shopJson = stringRedisTemplate.opsForValue().get(key);
