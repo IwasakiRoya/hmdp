@@ -41,7 +41,7 @@ public class ShopController {
      * @param shop 商铺数据
      * @return 商铺id
      */
-    @PostMapping
+    @PostMapping// 方法级路径为空，实际路径就是 /shop
     public Result saveShop(@RequestBody Shop shop) {
         // 写入数据库
         shopService.save(shop);
@@ -54,11 +54,12 @@ public class ShopController {
      * @param shop 商铺数据
      * @return 无
      */
-    @PutMapping
+    // Spring MVC 提供的“简化写法”，表示这个方法的请求路径，就是类上的路径本身
+    @PutMapping// 方法级路径为空，实际路径也是 /shop
     public Result updateShop(@RequestBody Shop shop) {
         // 写入数据库
-        shopService.updateById(shop);
-        return Result.ok();
+
+        return shopService.update(shop);
     }
 
     /**

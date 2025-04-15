@@ -11,6 +11,7 @@ import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
@@ -19,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static com.hmdp.utils.RedisConstants.CACHE_SHOP_KEY;
+import static com.hmdp.utils.RedisConstants.CACHE_SHOP_TTL;
 
 /**
  * <p>
@@ -57,7 +59,23 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 6.1 将Shop对象转换为JSON
         shopJson = JSONUtil.toJsonStr(shop);
         // 6.2 将Map写入Redis
-        stringRedisTemplate.opsForValue().set(key, shopJson);
+        // 添加过期时间，用于超时剔除
+        stringRedisTemplate.opsForValue().set(key, shopJson, CACHE_SHOP_TTL, java.util.concurrent.TimeUnit.MINUTES);
         return Result.ok(shop);
+    }
+
+    @Override
+    @Transactional // 保证更新和删除操作的原子性
+    public Result update(Shop shop) {
+        Long id = shop.getId();
+        // 判断id是否为空
+        if (id == null) {
+            return Result.fail("店铺id不能为空");
+        }
+        // 1.更新数据库
+        updateById(shop);
+        // 2.删除缓存
+        stringRedisTemplate.delete(CACHE_SHOP_KEY + shop.getId());
+        return Result.ok();
     }
 }
