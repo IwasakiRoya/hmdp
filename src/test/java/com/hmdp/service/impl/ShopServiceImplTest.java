@@ -13,6 +13,6 @@ class ShopServiceImplTest {
 
     @Test
     void saveShop2Redis() {
-        shopService.saveShop2Redis(1L, 10L);
+        shopService.saveShop2Redis(1L, 20L);
     }
 }

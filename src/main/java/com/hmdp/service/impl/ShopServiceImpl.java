@@ -12,6 +12,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
+import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisData;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -45,16 +46,21 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private CacheClient cacheClient;
+
     @Override
     public Result queryById(Long id) {
         // 单纯解决缓存穿透
         // Shop shop = queryWithPassTrough(id);
+        // Shop shop = cacheClient.queryWithPassTrough(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
         // 解决缓存穿透的基础上利用互斥锁解决缓存击穿
         // Shop shop = queryWithMutex(id);
 
         // 用逻辑过期解决缓存击穿，由于预热机制没有空值，所以不需要考虑缓存穿透
-        Shop shop = queryWithLogicalExpire(id);
+        //Shop shop = queryWithLogicalExpire(id);
+        Shop shop = cacheClient.queryWithLogicalExpire(CACHE_SHOP_KEY, id, Shop.class, this::getById, 20L, TimeUnit.SECONDS, LOCK_SHOP_KEY);
 
         return Result.ok(shop);
     }
